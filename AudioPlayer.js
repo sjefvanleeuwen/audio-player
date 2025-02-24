@@ -166,9 +166,13 @@ class AudioPlayer extends HTMLElement {
             ctx.shadowBlur = 10;         // increased blur for glow
             const groupSize = Math.floor(bufferLength / barCount);
             // Compute barWidth and startX as before
-            const barWidth = (canvas.width - barSpacing * (barCount - 1)) / barCount;
-            const totalBarWidth = barCount * barWidth + (barCount - 1) * barSpacing;
-            const startX = (canvas.width - totalBarWidth) / 2;
+            // Add padding on sides and calculate exact bar dimensions
+            const padding = barSpacing * 2;  // padding on each side
+            const availableWidth = canvas.width - (padding * 2);  // width minus padding
+            const barWidth = (availableWidth - (barSpacing * (barCount - 1))) / barCount;
+            // Calculate starting X with padding
+            const startX = padding;
+
             // Use improved logarithmic grouping for better low-frequency resolution.
             // Define frequency exponent (default 1.5) to adjust grouping.
             const freqExp = vizConfig.freqExp || 1.5;
@@ -208,7 +212,7 @@ class AudioPlayer extends HTMLElement {
                 } else {
                     this.currentBarHeights[i] = newHeight;
                 }
-                const currentX = startX + i * (barWidth + barSpacing);
+                const currentX = startX + (i * (barWidth + barSpacing));
                 ctx.fillStyle = dotPattern;
                 ctx.fillRect(currentX, canvas.height - this.currentBarHeights[i], barWidth, this.currentBarHeights[i]);
             }
