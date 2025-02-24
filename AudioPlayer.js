@@ -2,13 +2,23 @@ class AudioPlayer extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
-        // Updated template: a container with an image and an absolutely positioned canvas overlay
+        // Updated template: add title overlay on top of the image
         this.shadowRoot.innerHTML = `
             <style>
                 /* ...existing styles... */
                 :host { display: block; max-width: 600px; }
                 .player-wrapper { position: relative; }
                 .background-image { display: block; width: 100%; }
+                .title-overlay {
+                    position: absolute;
+                    bottom: calc(50% + 10px); /* places title just above the canvas */
+                    left: 50%;
+                    transform: translateX(-50%);
+                    z-index: 2; 
+                    color: white;
+                    font-size: calc(16px + 1vw);
+                    pointer-events: none;
+                }
                 canvas {
                     position: absolute;
                     top: 50%;
@@ -16,7 +26,8 @@ class AudioPlayer extends HTMLElement {
                     transform: translate(-50%, -50%);
                     pointer-events: none;
                     background: transparent;
-                    width: 90%;  // updated to 90% width of the background image
+                    width: 90%;
+                    z-index: 1;
                 }
                 ul { list-style: none; padding: 0; }
                 li { cursor: pointer; padding: 4px; }
@@ -24,6 +35,10 @@ class AudioPlayer extends HTMLElement {
                 .lcd-display { text-align: center; margin-top: 10px; }
             </style>
             <div class="player-wrapper">
+                <!-- HTML element for title overlay -->
+                <div class="title-overlay">
+                    <span class="title-text">Track Title</span>
+                </div>
                 <!-- HTML element with the image -->
                 <img class="background-image" src="./default-image.jpg" alt="Album Art">
                 <!-- Canvas overlay centered over the image -->
@@ -43,6 +58,7 @@ class AudioPlayer extends HTMLElement {
         const canvas = this.shadowRoot.querySelector('canvas');
         const playlistContainer = this.shadowRoot.querySelector('#playlist');
         const img = this.shadowRoot.querySelector('.background-image');
+        const titleText = this.shadowRoot.querySelector('.title-text');
         const ctx = canvas.getContext('2d');
 
         // Updated: Parse config as an object with "tracks" and "visualization" settings.
@@ -58,16 +74,21 @@ class AudioPlayer extends HTMLElement {
                 console.error('Invalid JSON in "config" attribute:', e);
             }
         }
-        // Set default audio source and background image from first track if available.
+        // Set default audio source, background image and title from first track if available.
         if (playlist.length && playlist[0].src) {
             audio.src = playlist[0].src;
             if (playlist[0].image) { img.src = playlist[0].image; }
             if (playlist[0].aspectRatio) { img.style.aspectRatio = playlist[0].aspectRatio; }
+            if (playlist[0].title) { titleText.textContent = playlist[0].title; }
         } else {
             audio.src = this.getAttribute('src') || "";
         }
+        // Apply dim setting to background if provided
+        if (vizConfig.dim !== undefined) {
+            img.style.filter = `brightness(${vizConfig.dim})`;
+        }
 
-        // Render playlist list
+        // Render playlist list and update title overlay on track change.
         const renderPlaylist = () => {
             playlistContainer.innerHTML = '';
             playlist.forEach((item, index) => {
@@ -85,6 +106,7 @@ class AudioPlayer extends HTMLElement {
                     // Update background image and aspect ratio if provided
                     if (item.image) { img.src = item.image; }
                     if (item.aspectRatio) { img.style.aspectRatio = item.aspectRatio; }
+                    if (item.title) { titleText.textContent = item.title; }
                     audio.play();
                 });
                 playlistContainer.appendChild(li);
@@ -143,23 +165,50 @@ class AudioPlayer extends HTMLElement {
             ctx.shadowColor = barColor;  // added for LCD glow effect
             ctx.shadowBlur = 10;         // increased blur for glow
             const groupSize = Math.floor(bufferLength / barCount);
-            // Compute totalSpacing and new barWidth
-            const totalSpacing = barSpacing * (barCount + 1);
-            const barWidth = (canvas.width - totalSpacing) / barCount;
+            // Compute barWidth and startX as before
+            const barWidth = (canvas.width - barSpacing * (barCount - 1)) / barCount;
+            const totalBarWidth = barCount * barWidth + (barCount - 1) * barSpacing;
+            const startX = (canvas.width - totalBarWidth) / 2;
+            // Use improved logarithmic grouping for better low-frequency resolution.
+            // Define frequency exponent (default 1.5) to adjust grouping.
+            const freqExp = vizConfig.freqExp || 1.5;
+            // Define a new frequency mapping parameter alpha (default 4)
+            const alpha = vizConfig.alpha || 4;
+
+            // Configuration for dual-segmentation frequency mapping:
+            const linearBars = vizConfig.linearBars !== undefined ? vizConfig.linearBars : 5;
+            // linearPortion: the number of bins allocated linearly (default 30% of bufferLength)
+            const linearPortion = vizConfig.linearPortion !== undefined ? vizConfig.linearPortion : Math.floor(bufferLength * 0.3);
+            
             for (let i = 0; i < barCount; i++) {
-                let sum = 0;
-                for (let j = 0; j < groupSize; j++) {
-                    sum += this.dataArray[i * groupSize + j];
+                let lowerBound, upperBound;
+                if (i < linearBars) {
+                    // Use linear mapping for the first linearBars bars.
+                    lowerBound = Math.floor(1 + (i / linearBars) * linearPortion);
+                    upperBound = Math.floor(1 + ((i + 1) / linearBars) * linearPortion);
+                } else {
+                    // Use exponential mapping for bars after linearBars.
+                    const expIndex = i - linearBars;
+                    const expBars = barCount - linearBars;
+                    lowerBound = Math.floor(linearPortion + ((Math.exp(alpha * (expIndex / expBars)) - 1) / (Math.exp(alpha) - 1)) * (bufferLength - linearPortion));
+                    upperBound = Math.floor(linearPortion + ((Math.exp(alpha * ((expIndex + 1) / expBars)) - 1) / (Math.exp(alpha) - 1)) * (bufferLength - linearPortion));
                 }
-                const newHeight = (sum / groupSize / 255 * canvas.height) * scaleFactor;
-                // If the new height is less than the current stored height,
-                // decrease gradually using fallSpeed, otherwise update immediately.
+                if (upperBound <= lowerBound) {
+                    upperBound = lowerBound + 1;
+                }
+                let sum = 0, count = 0;
+                for (let j = lowerBound; j < upperBound; j++) {
+                    sum += this.dataArray[j];
+                    count++;
+                }
+                const avg = count > 0 ? sum / count : 0;
+                const newHeight = (avg / 255 * canvas.height) * scaleFactor;
                 if (newHeight < this.currentBarHeights[i]) {
                     this.currentBarHeights[i] = Math.max(newHeight, this.currentBarHeights[i] - fallSpeed);
                 } else {
                     this.currentBarHeights[i] = newHeight;
                 }
-                const currentX = barSpacing + i * (barWidth + barSpacing);
+                const currentX = startX + i * (barWidth + barSpacing);
                 ctx.fillStyle = dotPattern;
                 ctx.fillRect(currentX, canvas.height - this.currentBarHeights[i], barWidth, this.currentBarHeights[i]);
             }
