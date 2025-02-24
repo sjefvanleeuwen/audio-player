@@ -2,22 +2,38 @@ class AudioPlayer extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
+        // Updated template: a container with an image and an absolutely positioned canvas overlay
         this.shadowRoot.innerHTML = `
             <style>
                 /* ...existing styles... */
                 :host { display: block; max-width: 600px; }
-                canvas { width: 100%; height: 100px; background: #000; }
+                .player-wrapper { position: relative; }
+                .background-image { display: block; width: 100%; }
+                canvas {
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    pointer-events: none;
+                    background: transparent;
+                    width: 90%;  // updated to 90% width of the background image
+                }
                 ul { list-style: none; padding: 0; }
                 li { cursor: pointer; padding: 4px; }
                 li.active { font-weight: bold; }
+                .lcd-display { text-align: center; margin-top: 10px; }
             </style>
-            <div>
-                <audio controls src=""></audio>
+            <div class="player-wrapper">
+                <!-- HTML element with the image -->
+                <img class="background-image" src="./default-image.jpg" alt="Album Art">
+                <!-- Canvas overlay centered over the image -->
                 <canvas></canvas>
-                <ul id="playlist"></ul>
-                <div class="lcd-display">
-                    <span class="lcd">Track Title</span>
-                </div>
+            </div>
+            <!-- Other controls below -->
+            <audio controls src=""></audio>
+            <ul id="playlist"></ul>
+            <div class="lcd-display">
+                <span class="lcd">Track Title</span>
             </div>
         `;
     }
@@ -26,6 +42,7 @@ class AudioPlayer extends HTMLElement {
         const audio = this.shadowRoot.querySelector('audio');
         const canvas = this.shadowRoot.querySelector('canvas');
         const playlistContainer = this.shadowRoot.querySelector('#playlist');
+        const img = this.shadowRoot.querySelector('.background-image');
         const ctx = canvas.getContext('2d');
 
         // Updated: Parse config as an object with "tracks" and "visualization" settings.
@@ -41,9 +58,11 @@ class AudioPlayer extends HTMLElement {
                 console.error('Invalid JSON in "config" attribute:', e);
             }
         }
-        // Set default audio source from first track if available.
+        // Set default audio source and background image from first track if available.
         if (playlist.length && playlist[0].src) {
             audio.src = playlist[0].src;
+            if (playlist[0].image) { img.src = playlist[0].image; }
+            if (playlist[0].aspectRatio) { img.style.aspectRatio = playlist[0].aspectRatio; }
         } else {
             audio.src = this.getAttribute('src') || "";
         }
@@ -63,6 +82,9 @@ class AudioPlayer extends HTMLElement {
                         this.audioContext.resume();
                     }
                     audio.src = item.src;
+                    // Update background image and aspect ratio if provided
+                    if (item.image) { img.src = item.image; }
+                    if (item.aspectRatio) { img.style.aspectRatio = item.aspectRatio; }
                     audio.play();
                 });
                 playlistContainer.appendChild(li);
@@ -108,14 +130,14 @@ class AudioPlayer extends HTMLElement {
         const renderFrame = () => {
             requestAnimationFrame(renderFrame);
             this.analyser.getByteFrequencyData(this.dataArray);
-            ctx.fillStyle = "#000";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+            // Instead of filling with black, clear the canvas for a transparent background
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.shadowColor = barColor;  // added for LCD glow effect
             ctx.shadowBlur = 10;         // increased blur for glow
             const groupSize = Math.floor(bufferLength / barCount);
-            const barWidth = (canvas.width - (barCount - 1) * barSpacing) / barCount;
-            let x = 0;
+            // Compute totalSpacing and new barWidth
+            const totalSpacing = barSpacing * (barCount + 1);
+            const barWidth = (canvas.width - totalSpacing) / barCount;
             for (let i = 0; i < barCount; i++) {
                 let sum = 0;
                 for (let j = 0; j < groupSize; j++) {
@@ -123,10 +145,9 @@ class AudioPlayer extends HTMLElement {
                 }
                 const avg = sum / groupSize;
                 const barHeight = (avg / 255 * canvas.height) * scaleFactor;
-                // Use the dot pattern as fill style for the bar
+                const currentX = barSpacing + i * (barWidth + barSpacing);
                 ctx.fillStyle = dotPattern;
-                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-                x += barWidth + barSpacing;
+                ctx.fillRect(currentX, canvas.height - barHeight, barWidth, barHeight);
             }
             // Reset shadow settings after drawing
             ctx.shadowBlur = 0;
