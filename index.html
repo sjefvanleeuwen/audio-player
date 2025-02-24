@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Audio Player with Visualizer</title>
+</head>
+<body>
+    <audio-player config='{
+        "tracks": [
+            { "src": "Sjef van Leeuwen ft. Isla Deimos - Fractured.mp3", "title": "Fractured" },
+            { "src": "another-track.mp3", "title": "Another Track" }
+        ],
+        "visualization": {
+            "scale": 1.0,
+            "color": "red",
+            "barCount": 20,
+            "barSpacing": 3
+        }
+    }'></audio-player>
+    <script type="module" src="./AudioPlayer.js"></script>
+</body>
+</html>
