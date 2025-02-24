@@ -15,6 +15,9 @@ class AudioPlayer extends HTMLElement {
                 <audio controls src=""></audio>
                 <canvas></canvas>
                 <ul id="playlist"></ul>
+                <div class="lcd-display">
+                    <span class="lcd">Track Title</span>
+                </div>
             </div>
         `;
     }
@@ -83,9 +86,20 @@ class AudioPlayer extends HTMLElement {
 
         // Use visualization settings from config: scale factor, color, bar count, and bar spacing with defaults.
         const scaleFactor = vizConfig.scale || 1;
-        const barColor = vizConfig.color || "lime";
+        const barColor = vizConfig.color || 'lime'; // now taken directly from config
         const barCount = vizConfig.barCount || bufferLength; // if not provided, use all frequency bins
         const barSpacing = vizConfig.barSpacing || 2;
+
+        // Create an off-screen canvas for the dot pattern
+        const patternCanvas = document.createElement('canvas');
+        patternCanvas.width = 4;
+        patternCanvas.height = 4;
+        const pCtx = patternCanvas.getContext('2d');
+        // Draw a small dot in the center
+        pCtx.fillStyle = barColor;
+        pCtx.fillRect(1, 1, 2, 2);
+        // Create repeatable pattern
+        const dotPattern = ctx.createPattern(patternCanvas, 'repeat');
 
         // Start rendering the frequency bars with new settings
         const renderFrame = () => {
@@ -94,25 +108,38 @@ class AudioPlayer extends HTMLElement {
             ctx.fillStyle = "#000";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            ctx.shadowColor = barColor;  // added for LCD glow effect
+            ctx.shadowBlur = 10;         // increased blur for glow
             const groupSize = Math.floor(bufferLength / barCount);
-            // Calculate bar width accounting for spacing gaps between bars
             const barWidth = (canvas.width - (barCount - 1) * barSpacing) / barCount;
             let x = 0;
             for (let i = 0; i < barCount; i++) {
-                // Average frequency value over the group
                 let sum = 0;
                 for (let j = 0; j < groupSize; j++) {
                     sum += this.dataArray[i * groupSize + j];
                 }
-                let avg = sum / groupSize;
-                let barHeight = (avg / 255 * canvas.height) * scaleFactor;
-                ctx.fillStyle = barColor;
+                const avg = sum / groupSize;
+                const barHeight = (avg / 255 * canvas.height) * scaleFactor;
+                // Use the dot pattern as fill style for the bar
+                ctx.fillStyle = dotPattern;
                 ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
                 x += barWidth + barSpacing;
             }
+            // Reset shadow settings after drawing
+            ctx.shadowBlur = 0;
         };
 
         renderFrame();
+    }
+
+    getConfigTitle() {
+        // Assuming config is parsed from the "config" attribute.
+        try {
+            const config = JSON.parse(this.getAttribute("config"));
+            return config && config.tracks && config.tracks[0] && config.tracks[0].title;
+        } catch (err) {
+            return null;
+        }
     }
 
     disconnectedCallback() {
