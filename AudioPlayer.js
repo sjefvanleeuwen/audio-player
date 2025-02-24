@@ -59,6 +59,9 @@ class AudioPlayer extends HTMLElement {
                     // Remove active class from all
                     [...playlistContainer.children].forEach(el => el.classList.remove('active'));
                     li.classList.add('active');
+                    if (this.audioContext.state === 'suspended') {
+                        this.audioContext.resume();
+                    }
                     audio.src = item.src;
                     audio.play();
                 });
