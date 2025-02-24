@@ -140,10 +140,15 @@ class AudioPlayer extends HTMLElement {
         // Retrieve fallSpeed from config (default to 2 pixels per frame)
         const fallSpeed = vizConfig.fallSpeed || 2;
         
-        // Initialize currentBarHeights array if not already done or if barCount changes
+        // Initialize arrays for current heights and peak tracking
         if (!this.currentBarHeights || this.currentBarHeights.length !== barCount) {
             this.currentBarHeights = new Array(barCount).fill(0);
+            this.peakHeights = new Array(barCount).fill(0);
+            this.peakHoldCounters = new Array(barCount).fill(0);
         }
+
+        const peakHoldTime = vizConfig.peakHoldTime || 30;  // frames to hold peak
+        const peakDecay = vizConfig.peakDecay || 0.5;      // pixels per frame decay
 
         // Create an off-screen canvas for the dot pattern
         const patternCanvas = document.createElement('canvas');
@@ -207,14 +212,40 @@ class AudioPlayer extends HTMLElement {
                 }
                 const avg = count > 0 ? sum / count : 0;
                 const newHeight = (avg / 255 * canvas.height) * scaleFactor;
+                
+                // Update current bar height with fall speed
                 if (newHeight < this.currentBarHeights[i]) {
                     this.currentBarHeights[i] = Math.max(newHeight, this.currentBarHeights[i] - fallSpeed);
                 } else {
                     this.currentBarHeights[i] = newHeight;
                 }
+
+                // Update peak tracking
+                if (newHeight >= this.peakHeights[i]) {
+                    this.peakHeights[i] = newHeight;
+                    this.peakHoldCounters[i] = peakHoldTime;
+                } else {
+                    if (this.peakHoldCounters[i] > 0) {
+                        this.peakHoldCounters[i]--;
+                    } else {
+                        this.peakHeights[i] = Math.max(0, this.peakHeights[i] - peakDecay);
+                    }
+                }
+
+                // Draw main bar
                 const currentX = startX + (i * (barWidth + barSpacing));
                 ctx.fillStyle = dotPattern;
                 ctx.fillRect(currentX, canvas.height - this.currentBarHeights[i], barWidth, this.currentBarHeights[i]);
+
+                // Draw peak line
+                const peakY = canvas.height - this.peakHeights[i];
+                ctx.setLineDash([2, 2]);  // Create dotted line
+                ctx.beginPath();
+                ctx.moveTo(currentX, peakY);
+                ctx.lineTo(currentX + barWidth, peakY);
+                ctx.strokeStyle = barColor;
+                ctx.stroke();
+                ctx.setLineDash([]);  // Reset line style
             }
             // Reset shadow settings after drawing
             ctx.shadowBlur = 0;
