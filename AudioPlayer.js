@@ -115,6 +115,14 @@ class AudioPlayer extends HTMLElement {
         const barCount = vizConfig.barCount || bufferLength; // if not provided, use all frequency bins
         const barSpacing = vizConfig.barSpacing || 2;
 
+        // Retrieve fallSpeed from config (default to 2 pixels per frame)
+        const fallSpeed = vizConfig.fallSpeed || 2;
+        
+        // Initialize currentBarHeights array if not already done or if barCount changes
+        if (!this.currentBarHeights || this.currentBarHeights.length !== barCount) {
+            this.currentBarHeights = new Array(barCount).fill(0);
+        }
+
         // Create an off-screen canvas for the dot pattern
         const patternCanvas = document.createElement('canvas');
         patternCanvas.width = 4;
@@ -143,11 +151,17 @@ class AudioPlayer extends HTMLElement {
                 for (let j = 0; j < groupSize; j++) {
                     sum += this.dataArray[i * groupSize + j];
                 }
-                const avg = sum / groupSize;
-                const barHeight = (avg / 255 * canvas.height) * scaleFactor;
+                const newHeight = (sum / groupSize / 255 * canvas.height) * scaleFactor;
+                // If the new height is less than the current stored height,
+                // decrease gradually using fallSpeed, otherwise update immediately.
+                if (newHeight < this.currentBarHeights[i]) {
+                    this.currentBarHeights[i] = Math.max(newHeight, this.currentBarHeights[i] - fallSpeed);
+                } else {
+                    this.currentBarHeights[i] = newHeight;
+                }
                 const currentX = barSpacing + i * (barWidth + barSpacing);
                 ctx.fillStyle = dotPattern;
-                ctx.fillRect(currentX, canvas.height - barHeight, barWidth, barHeight);
+                ctx.fillRect(currentX, canvas.height - this.currentBarHeights[i], barWidth, this.currentBarHeights[i]);
             }
             // Reset shadow settings after drawing
             ctx.shadowBlur = 0;
