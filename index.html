@@ -11,14 +11,31 @@
             { "src": "another-track.mp3", "title": "Another Track, you must hear.", "image": "track2.jpg", "aspectRatio": "4/3" }
         ],
         "visualization": {
-            "scale": 0.5,
+            "scale": 1,
             "color": "white",
             "barCount": 16,
-            "barSpacing":4,
+            "barSpacing": 4,
             "fallSpeed": 1,
-            "dim": 0.5,
+            "dim": 0.15,
             "peakHoldTime": 30,
-            "peakDecay": 0.5
+            "peakDecay": 2
+        },
+        "styling": {
+            "controls": {
+                "playIcon": "./images/play.svg",
+                "pauseIcon": "./images/pause.svg",
+                "prevIcon": "./images/prev.svg",
+                "nextIcon": "./images/next.svg",
+                "volumeIcon": "./images/volume.svg",
+                "muteIcon": "./images/mute.svg",
+                "speedIcon": "./images/speed.svg"
+            },
+            "slider": {
+                "background": "#444",
+                "height": "4px",
+                "thumbSize": "12px",
+                "thumbColor": "white"
+            }
         }
     }'></audio-player>
     <script type="module" src="./AudioPlayer.js"></script>
